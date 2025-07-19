@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Proposal Generator</title>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: Arial; max-width: 900px; margin: auto; padding: 20px; }
+    input, select, button { width: 100%; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+    button { background-color: #007BFF; color: white; border: none; cursor: pointer; }
+    button:hover { background-color: #0056b3; }
+    label { font-weight: bold; margin-top: 20px; display: block; }
+  </style>
+</head>
+<body>
+  <h2>Proposal Generator</h2>
+
+  <form id="proposalForm">
+    <label for="modelType">Select Business Model:</label>
+    <select name="modelType" id="modelType" required>
+      <option value="">-- Select --</option>
+      <option value="opex">OPEX</option>
+      <option value="capex">CAPEX</option>
+    </select>
+
+    <!-- OPEX FIELDS -->
+    <div id="opexFields" style="display:none;">
+      <input name="clientName" placeholder="Client Name" required />
+      <input name="Location" placeholder="Location" required />
+      <input name="Date" placeholder="Date (e.g. 24th June 2025)" type="text" required />
+      <input name="capacity" placeholder="Capacity (kWp)" required />
+      <input name="generationNumber" placeholder="Generation Number (kWh/kWp)" required />
+      <label for="template">Select OPEX Contract Tenure:</label>
+      <select name="template" id="template">
+        <option value="10">10 years</option>
+        <option value="15">15 years</option>
+        <option value="25">25 years</option>
+        <option value="10,15">10 & 15 years</option>
+        <option value="15,25">15 & 25 years</option>
+        <option value="10,25">10 & 25 years</option>
+        <option value="10,15,25">10, 15 & 25 years</option>
+      </select>
+      <div id="tariffInputs"></div>
+      <label for="includeSavings">Include Cost Savings?</label>
+      <select name="includeSavings" id="includeSavings">
+        <option value="">-- Select --</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+      <div id="gridPriceInput" style="display:none;">
+        <input name="current_electricity_price-1" placeholder="Grid Electricity Price Year 1 (Rs/kWh)" />
+      </div>
+    </div>
+
+    <!-- CAPEX FIELDS -->
+    <div id="capexFields" style="display:none;">
+      <input name="clientName" placeholder="Client Name" required />
+      <input name="Location" placeholder="Location" required />
+      <input name="Date" placeholder="Date (e.g. 24th June 2025)" type="text" required />
+      <input name="capacity" placeholder="Capacity (kWp)" required />
+      <input name="pricePerWp" placeholder="Price per Wp (Rs)" type="number" step="0.01" required />
+    </div>
+
+    <label for="format">Select Proposal Format:</label>
+    <select name="format" id="format" required>
+      <option value="docx">Word (.docx)</option>
+      <option value="pdf">PDF (.pdf)</option>
+    </select>
+
+    <button type="submit">Generate Proposal</button>
+  </form>
+
+  <script>
+    const termOptions = {
+      "10": [10], "15": [15], "25": [25],
+      "10,15": [10, 15], "15,25": [15, 25],
+      "10,25": [10, 25], "10,15,25": [10, 15, 25]
+    };
+
+    document.getElementById("modelType").addEventListener("change", function () {
+      const isCapex = this.value === "capex";
+      const isOpex = this.value === "opex";
+      document.getElementById("capexFields").style.display = isCapex ? "block" : "none";
+      document.getElementById("opexFields").style.display = isOpex ? "block" : "none";
+
+      // Enable/disable inputs in CAPEX fields
+      Array.from(document.querySelectorAll("#capexFields input, #capexFields select")).forEach(el => {
+        el.disabled = !isCapex;
+      });
+      // Enable/disable inputs in OPEX fields
+      Array.from(document.querySelectorAll("#opexFields input, #opexFields select")).forEach(el => {
+        el.disabled = !isOpex;
+      });
+    });
+
+    document.getElementById("template").addEventListener("change", function () {
+      const selected = this.value;
+      const years = termOptions[selected] || [];
+      const tariffDiv = document.getElementById("tariffInputs");
+      tariffDiv.innerHTML = '';
+      if (selected) {
+        years.forEach(year => {
+          const label = document.createElement('label');
+          label.textContent = `Tariff for ${year} years (Rs/kWh):`;
+          const input = document.createElement('input');
+          input.name = `tariff_${year}`;
+          input.placeholder = `Tariff for ${year} years`;
+          input.required = true;
+          input.type = 'number';
+          input.step = '0.01';
+          tariffDiv.appendChild(label);
+          tariffDiv.appendChild(input);
+        });
+      }
+    });
+
+    document.getElementById("includeSavings").addEventListener("change", function () {
+      document.getElementById("gridPriceInput").style.display = this.value === "yes" ? "block" : "none";
+    });
+
+    document.getElementById("proposalForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const formData = new FormData(this);
+      const data = Object.fromEntries(formData.entries());
+      const requiredFields = Object.keys(data).filter(key => key.startsWith("tariff_") && !data[key]);
+      if (data.modelType === "opex" && requiredFields.length > 0) {
+        alert("Please fill all required tariff fields.");
+        return;
+      }
+
+      try {
+        const res = await fetch("http://localhost:5000/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Error: " + (err.error || res.statusText));
+          return;
+        }
+
+        const blob = await res.blob();
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.download = `Proposal_${data.clientName || "Client"}.${data.format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        alert("Request failed: " + err.message);
+      }
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("modelType").dispatchEvent(new Event("change"));
+      document.getElementById("template").dispatchEvent(new Event("change"));
+      document.getElementById("includeSavings").dispatchEvent(new Event("change"));
+    });
+  </script>
+</body>
+</html>
