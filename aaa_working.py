@@ -1,4 +1,3 @@
-
 from flask import Flask, request, send_file, jsonify
 from docx import Document
 from io import BytesIO
@@ -6,8 +5,8 @@ from flask_cors import CORS
 import re
 import os
 import tempfile
-import pythoncom
-import win32com.client
+# REMOVE: import pythoncom
+# REMOVE: import win32com.client
 import threading
 
 app = Flask(__name__)
@@ -48,49 +47,8 @@ def replace_all_placeholders(doc_obj, replacements):
             for cell in row.cells:
                 replace_all_placeholders(cell, replacements)
 
-def convert_docx_to_pdf(docx_bytes_io):
-    result = {}
+# REMOVE convert_docx_to_pdf function and all references to it
 
-    def run_conversion():
-        try:
-            pythoncom.CoInitialize()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as docx_file:
-                docx_file.write(docx_bytes_io.getvalue())
-                docx_path = docx_file.name
-
-            pdf_path = docx_path.replace(".docx", ".pdf")
-
-            word = win32com.client.Dispatch("Word.Application")
-            word.Visible = False
-            doc = word.Documents.Open(docx_path)
-            doc.SaveAs(pdf_path, FileFormat=17)
-            doc.Close(False)
-            word.Quit()
-
-            with open(pdf_path, "rb") as f:
-                result['pdf'] = BytesIO(f.read())
-
-        except Exception as e:
-            result['error'] = str(e)
-
-        finally:
-            if os.path.exists(docx_path):
-                os.remove(docx_path)
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
-
-    thread = threading.Thread(target=run_conversion)
-    thread.start()
-    thread.join()
-
-    if 'error' in result:
-        raise Exception(result['error'])
-
-    return result['pdf']
-
-#########################################################################################
-
-####################################################################################################
 @app.route('/generate', methods=['POST'])
 def generate_proposal():
     data = request.get_json()
@@ -200,8 +158,8 @@ def generate_proposal():
         output.seek(0)
 
         if file_format == "pdf":
-            output = convert_docx_to_pdf(output)
-            mimetype = "application/pdf"
+            # PDF conversion not supported on Linux in this code
+            return jsonify({"error": "PDF generation is only supported on Windows server."}), 501
         else:
             mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
